@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from PIL import Image, ImageTk
 import threading
+import torch  # Add this import
 
 # Define path to model and other user variables
 model_path = 'my_model.pt'  # Path to model
@@ -19,6 +20,12 @@ recycling_suggestions = {
     'cardboard': "Flatten this cardboard and place it in your recycling bin. Ensure it's clean and dry."
 }
 
+# Set bounding box colors (using the Tableu 10 color scheme)
+bbox_colors = {
+    'plastic': (0, 255, 0),  # Green for plastic
+    'cardboard': (0, 0, 255)  # Red for cardboard
+}
+
 # Check if model file exists and is valid
 if not os.path.exists(model_path):
     print('WARNING: Model path is invalid or model was not found.')
@@ -26,6 +33,15 @@ if not os.path.exists(model_path):
 
 # Load the model into memory and get label map
 model = YOLO(model_path, task='detect')
+
+# Fix: Load the state dictionary with strict=False
+try:
+    checkpoint = torch.load(model_path)
+    model.model.load_state_dict(checkpoint['model'].float().state_dict(), strict=False)
+except Exception as e:
+    print(f"Error loading model: {e}")
+    sys.exit()
+
 labels = model.names
 
 # Initialize camera
@@ -36,8 +52,12 @@ is_running = False
 def initialize_camera():
     global cap
     cap = cv2.VideoCapture(cam_index)
+    if not cap.isOpened():
+        messagebox.showerror("Error", "Unable to access the camera. Please check the camera index.")
+        return False
     cap.set(3, imgW)
     cap.set(4, imgH)
+    return True
 
 # Function to process an image and display results
 def process_image(image_path):
@@ -110,7 +130,8 @@ def process_image(image_path):
 def start_camera():
     global is_running, cap
     if cap is None or not cap.isOpened():
-        initialize_camera()
+        if not initialize_camera():
+            return  # Exit if camera initialization fails
     is_running = True
     while is_running:
         ret, frame = cap.read()
@@ -208,19 +229,34 @@ def exit_app():
 
 # Create the main GUI window
 root = tk.Tk()
-root.title("Recycling Material Identifier")
+root.title("My Recycling Identifier")
+root.geometry("1280x800")  # Set window size
+
+# Modern color scheme
+bg_color = "#2E3440"  # Dark background
+fg_color = "#D8DEE9"  # Light text
+button_color = "#5E81AC"  # Blue buttons
+text_color = "#333333"  # White text
+
+# Apply custom styling
+style = ttk.Style()
+style.theme_use("clam")  # Use a modern theme
+style.configure("TFrame", background=bg_color)
+style.configure("TLabel", background=bg_color, foreground=fg_color, font=("Helvetica", 12))
+style.configure("TButton", background=button_color, foreground=text_color, font=("Helvetica", 12), padding=10)
+style.configure("TText", background=bg_color, foreground=fg_color, font=("Helvetica", 12))
 
 # Create a frame for the video feed
 video_frame = ttk.Frame(root)
-video_frame.pack(pady=10)
+video_frame.pack(pady=10, fill=tk.BOTH, expand=True)
 
 # Label to display the video feed
 video_label = ttk.Label(video_frame)
-video_label.pack()
+video_label.pack(fill=tk.BOTH, expand=True)
 
 # Create a frame for buttons
 button_frame = ttk.Frame(root)
-button_frame.pack(pady=10)
+button_frame.pack(pady=10, fill=tk.X)
 
 # Start Camera Button
 start_button = ttk.Button(button_frame, text="Start Camera", command=lambda: threading.Thread(target=start_camera).start())
@@ -244,15 +280,15 @@ exit_button.grid(row=0, column=4, padx=5)
 
 # Create a frame for recycling suggestions
 suggestions_frame = ttk.Frame(root)
-suggestions_frame.pack(pady=10)
+suggestions_frame.pack(pady=10, fill=tk.BOTH, expand=True)
 
 # Label for suggestions
 suggestions_label = ttk.Label(suggestions_frame, text="Recycling Suggestions:")
 suggestions_label.pack()
 
 # Text box to display recycling suggestions
-suggestions_box = tk.Text(suggestions_frame, height=5, width=80, state=tk.DISABLED)
-suggestions_box.pack()
+suggestions_box = tk.Text(suggestions_frame, height=5, width=80, state=tk.DISABLED, bg=bg_color, fg=fg_color, font=("Helvetica", 12))
+suggestions_box.pack(fill=tk.BOTH, expand=True)
 
 # Run the GUI
 root.mainloop()

@@ -2,39 +2,42 @@ import os
 import sys
 import cv2
 from ultralytics import YOLO
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import torch
+from pathlib import Path
+from tkinter import Tk, Canvas, Text, Button, PhotoImage, messagebox, filedialog
 from PIL import Image, ImageTk
 import threading
-import torch  # Add this import
 
-# Define path to model and other user variables
-model_path = 'my_model.pt'  # Path to model
-min_thresh = 0.50  # Minimum detection threshold
-cam_index = 0  # Index of USB camera
-imgW, imgH = 1280, 720  # Resolution to run USB camera at
+# Path configurations
+OUTPUT_PATH = Path(__file__).parent
+ASSETS_PATH = OUTPUT_PATH / Path(r"E:\download\Compressed\Tkinter-Designer-master\Tkinter-Designer-master\build\assets\frame0")
 
-# Create dictionary to hold info about recycling suggestions
+def relative_to_assets(path: str) -> Path:
+    return ASSETS_PATH / Path(path)
+
+# AI Model configurations
+model_path = 'my_model.pt'
+min_thresh = 0.50
+imgW, imgH = 725, 456
+
+# Recycling information
 recycling_suggestions = {
     'plastic': "Recycle this plastic item in your local recycling bin. Consider reusing it if possible.",
     'cardboard': "Flatten this cardboard and place it in your recycling bin. Ensure it's clean and dry."
 }
 
-# Set bounding box colors (using the Tableu 10 color scheme)
 bbox_colors = {
-    'plastic': (0, 255, 0),  # Green for plastic
-    'cardboard': (0, 0, 255)  # Red for cardboard
+    'plastic': (0, 255, 0),
+    'cardboard': (0, 0, 255)
 }
 
-# Check if model file exists and is valid
+# Initialize AI model
 if not os.path.exists(model_path):
     print('WARNING: Model path is invalid or model was not found.')
     sys.exit()
 
-# Load the model into memory and get label map
 model = YOLO(model_path, task='detect')
 
-# Fix: Load the state dictionary with strict=False
 try:
     checkpoint = torch.load(model_path)
     model.model.load_state_dict(checkpoint['model'].float().state_dict(), strict=False)
@@ -44,256 +47,228 @@ except Exception as e:
 
 labels = model.names
 
-# Initialize camera
+# Global variables
 cap = None
 is_running = False
+current_frame = None
 
-# Function to initialize the camera
-def initialize_camera():
-    global cap
-    cap = cv2.VideoCapture(cam_index)
-    if not cap.isOpened():
-        messagebox.showerror("Error", "Unable to access the camera. Please check the camera index.")
-        return False
-    cap.set(3, imgW)
-    cap.set(4, imgH)
-    return True
+class RecycleAI:
+    def __init__(self):
+        self.window = Tk()
+        self.window.title("Recycle AI")
+        self.window.geometry("1280x720")
+        self.window.configure(bg="#FFFFFF")
+        self.window.resizable(False, False)
+        
+        self.setup_canvas()
+        self.load_images()
+        self.create_buttons()
+        self.setup_text_area()
+        
+        self.is_running = False
+        self.cap = None
 
-# Function to process an image and display results
-def process_image(image_path):
-    global current_frame
-    frame = cv2.imread(image_path)
-    if frame is None:
-        messagebox.showerror("Error", "Unable to read the image file.")
-        return
+    def setup_canvas(self):
+        self.canvas = Canvas(
+            self.window,
+            bg="#FFFFFF",
+            height=720,
+            width=1280,
+            bd=0,
+            highlightthickness=0,
+            relief="ridge"
+        )
+        self.canvas.place(x=0, y=0)
 
-    # Run inference on the image
-    results = model.track(frame, verbose=False)
+    def load_images(self):
+        # Load all your original images
+        self.image_1 = PhotoImage(file=relative_to_assets("image_1.png"))
+        self.image_2 = PhotoImage(file=relative_to_assets("image_2.png"))
+        self.image_3 = PhotoImage(file=relative_to_assets("image_3.png"))
+        
+        # Create image elements
+        self.canvas.create_image(640.0, 48.0, image=self.image_1)
+        self.canvas.create_image(35.0, 49.0, image=self.image_2)
+        self.canvas.create_image(400.0, 356.0, image=self.image_3)
+        
+        # Create title text
+        self.canvas.create_text(
+            69.0, 25.0,
+            anchor="nw",
+            text="RECYCLE AI",
+            fill="#FFFFFF",
+            font=("Montserrat Bold", 32 * -1)
+        )
 
-    # Extract results
-    detections = results[0].boxes
+    def create_buttons(self):
+        # Load button images
+        button_images = []
+        for i in range(1, 6):
+            img = PhotoImage(file=relative_to_assets(f"button_{i}.png"))
+            button_images.append(img)
+            setattr(self, f'button_image_{i}', img)
 
-    # Initialize variable to hold every material detected in this frame
-    materials_detected = []
+        # Create buttons with their respective commands
+        self.buttons = []
+        button_commands = [
+            self.start_camera_thread,  # Button 1: Start Camera
+            self.exit_app,          # Button 5: Exit
+            self.stop_camera,          # Button 2: Stop Camera
+            self.upload_image,         # Button 3: Upload Image
+            self.save_image         # Button 4: Save Image
+        ]
+        button_positions = [
+            (94.0, 617.0),    # Button 1 position
+            (962.0, 617.0),    # Button 5 position
+            (311.0, 617.0),   # Button 2 position
+            (528.0, 617.0),   # Button 3 position
+            (745.0, 618.0)   # Button 4 position
+        ]
 
-    # Go through each detection and get bbox coords, confidence, and class
-    for i in range(len(detections)):
-        # Get bounding box coordinates
-        xyxy_tensor = detections[i].xyxy.cpu()
-        xyxy = xyxy_tensor.numpy().squeeze()
-        xmin, ymin, xmax, ymax = xyxy.astype(int)
+        for i, (img, cmd, pos) in enumerate(zip(button_images, button_commands, button_positions)):
+            btn = Button(
+                image=img,
+                borderwidth=0,
+                highlightthickness=0,
+                command=cmd,
+                relief="flat"
+            )
+            btn.place(x=pos[0], y=pos[1], width=183.0, height=50.0)
+            self.buttons.append(btn)
 
-        # Get bounding box class ID and name
-        classidx = int(detections[i].cls.item())
-        classname = labels[classidx]
+    def setup_text_area(self):
+        # Create the suggestions text area
+        entry_image_1 = PhotoImage(file=relative_to_assets("entry_1.png"))
+        self.canvas.create_image(1029.5, 356.5, image=entry_image_1)
+        self.entry_image_1 = entry_image_1  # Prevent garbage collection
+        
+        self.suggestions_text = Text(
+            self.window,
+            bd=0,
+            bg="#ffffff",
+            fg="#000716",
+            highlightthickness=0
+        )
+        self.suggestions_text.place(
+            x=816.0,
+            y=126.0,
+            width=427.0,
+            height=459.0
+        )
 
-        # Get bounding box confidence
-        conf = detections[i].conf.item()
+    def start_camera_thread(self):
+        if not self.is_running:
+            threading.Thread(target=self.start_camera, daemon=True).start()
 
-        # Draw box if confidence threshold is high enough
-        if conf > min_thresh:
-            # Draw box around object
-            color = bbox_colors.get(classname, (255, 255, 255))
-            cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
+    def start_camera(self):
+        global cap
+        if self.cap is None:
+            self.cap = cv2.VideoCapture(0)
+            if not self.cap.isOpened():
+                messagebox.showerror("Error", "Unable to access the camera.")
+                return
+            self.cap.set(3, imgW)
+            self.cap.set(4, imgH)
+        
+        self.is_running = True
+        self.process_camera_feed()
 
-            # Draw label for object
-            label = f'{classname}: {int(conf * 100)}%'
-            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            label_ymin = max(ymin, labelSize[1] + 10)
-            cv2.rectangle(frame, (xmin, label_ymin - labelSize[1] - 10), (xmin + labelSize[0], label_ymin + baseLine - 10), color, cv2.FILLED)
-            cv2.putText(frame, label, (xmin, label_ymin - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    def process_camera_feed(self):
+        while self.is_running:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
 
-            # Add object to list of detected materials
-            materials_detected.append(classname)
+            # Process frame with AI model
+            results = model.track(frame, verbose=False)
+            processed_frame = self.process_detections(frame, results[0].boxes)
+            
+            # Update GUI
+            self.update_display(processed_frame)
 
-    # Process list of materials that have been detected to provide recycling suggestions
-    suggestions_text = ""
-    for material in materials_detected:
-        suggestion = recycling_suggestions.get(material, "No suggestion available for this material.")
-        suggestions_text += f"Detected {material}: {suggestion}\n"
+        if self.cap:
+            self.cap.release()
+            self.cap = None
 
-    # Update the suggestions text box
-    suggestions_box.config(state=tk.NORMAL)
-    suggestions_box.delete(1.0, tk.END)
-    suggestions_box.insert(tk.END, suggestions_text)
-    suggestions_box.config(state=tk.DISABLED)
-
-    # Convert frame to RGB and display in the GUI
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    img = Image.fromarray(frame)
-    img.thumbnail((imgW, imgH))  # Resize image to fit within the display area
-    img_tk = ImageTk.PhotoImage(image=img)
-    video_label.img_tk = img_tk  # Keep a reference to avoid garbage collection
-    video_label.config(image=img_tk)
-
-# Function to start the camera feed
-def start_camera():
-    global is_running, cap
-    if cap is None or not cap.isOpened():
-        if not initialize_camera():
-            return  # Exit if camera initialization fails
-    is_running = True
-    while is_running:
-        ret, frame = cap.read()
-        if not ret:
-            messagebox.showerror("Error", "Unable to read frames from the camera.")
-            break
-
-        # Run inference on frame with tracking enabled
-        results = model.track(frame, verbose=False)
-
-        # Extract results
-        detections = results[0].boxes
-
-        # Initialize variable to hold every material detected in this frame
+    def process_detections(self, frame, detections):
         materials_detected = []
-
-        # Go through each detection and get bbox coords, confidence, and class
-        for i in range(len(detections)):
-            # Get bounding box coordinates
-            xyxy_tensor = detections[i].xyxy.cpu()
-            xyxy = xyxy_tensor.numpy().squeeze()
+        
+        for detection in detections:
+            # Get detection details
+            xyxy = detection.xyxy.cpu().numpy().squeeze()
             xmin, ymin, xmax, ymax = xyxy.astype(int)
+            classname = labels[int(detection.cls.item())]
+            conf = detection.conf.item()
 
-            # Get bounding box class ID and name
-            classidx = int(detections[i].cls.item())
-            classname = labels[classidx]
-
-            # Get bounding box confidence
-            conf = detections[i].conf.item()
-
-            # Draw box if confidence threshold is high enough
             if conf > min_thresh:
-                # Draw box around object
+                # Draw bounding box
                 color = bbox_colors.get(classname, (255, 255, 255))
                 cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
-
-                # Draw label for object
+                
+                # Add label
                 label = f'{classname}: {int(conf * 100)}%'
-                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                label_ymin = max(ymin, labelSize[1] + 10)
-                cv2.rectangle(frame, (xmin, label_ymin - labelSize[1] - 10), (xmin + labelSize[0], label_ymin + baseLine - 10), color, cv2.FILLED)
-                cv2.putText(frame, label, (xmin, label_ymin - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-                # Add object to list of detected materials
+                self.draw_label(frame, label, xmin, ymin, color)
+                
                 materials_detected.append(classname)
 
-        # Process list of materials that have been detected to provide recycling suggestions
+        # Update suggestions
+        self.update_suggestions(materials_detected)
+        return frame
+
+    def draw_label(self, frame, label, x, y, color):
+        labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        y = max(y, labelSize[1] + 10)
+        cv2.rectangle(frame, (x, y - labelSize[1] - 10),
+                     (x + labelSize[0], y + baseLine - 10), color, cv2.FILLED)
+        cv2.putText(frame, label, (x, y - 7),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+    def update_display(self, frame):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+        img.thumbnail((imgW, imgH))
+        img_tk = ImageTk.PhotoImage(image=img)
+        
+        # Update the image in canvas
+        self.canvas.create_image(400.0, 356.0, image=img_tk)
+        self.canvas.image = img_tk  # Keep reference
+
+    def update_suggestions(self, materials):
         suggestions_text = ""
-        for material in materials_detected:
+        for material in materials:
             suggestion = recycling_suggestions.get(material, "No suggestion available for this material.")
             suggestions_text += f"Detected {material}: {suggestion}\n"
+        
+        self.suggestions_text.delete(1.0, "end")
+        self.suggestions_text.insert("1.0", suggestions_text)
 
-        # Update the suggestions text box
-        suggestions_box.config(state=tk.NORMAL)
-        suggestions_box.delete(1.0, tk.END)
-        suggestions_box.insert(tk.END, suggestions_text)
-        suggestions_box.config(state=tk.DISABLED)
+    def stop_camera(self):
+        self.is_running = False
 
-        # Convert frame to RGB and display in the GUI
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame)
-        img.thumbnail((imgW, imgH))  # Resize image to fit within the display area
-        img_tk = ImageTk.PhotoImage(image=img)
-        video_label.img_tk = img_tk  # Keep a reference to avoid garbage collection
-        video_label.config(image=img_tk)
+    def upload_image(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Image Files", "*.jpg;*.jpeg;*.png")])
+        if file_path:
+            frame = cv2.imread(file_path)
+            if frame is not None:
+                results = model.track(frame, verbose=False)
+                processed_frame = self.process_detections(frame, results[0].boxes)
+                self.update_display(processed_frame)
 
-    # Release camera when stopped
-    if not is_running:
-        cap.release()
-        cap = None
+    def save_image(self):
+        if self.cap is not None:
+            ret, frame = self.cap.read()
+            if ret:
+                cv2.imwrite("recycle_capture.png", frame)
+                messagebox.showinfo("Success", "Image saved as recycle_capture.png")
 
-# Function to stop the camera feed
-def stop_camera():
-    global is_running
-    is_running = False
+    def exit_app(self):
+        self.stop_camera()
+        self.window.destroy()
 
-# Function to save the current frame as an image
-def save_image():
-    if current_frame is not None:
-        cv2.imwrite("recycle_capture.png", current_frame)
-        messagebox.showinfo("Success", "Image saved as recycle_capture.png")
+    def run(self):
+        self.window.mainloop()
 
-# Function to upload an image
-def upload_image():
-    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg;*.jpeg;*.png")])
-    if file_path:
-        process_image(file_path)
-
-# Function to exit the application
-def exit_app():
-    stop_camera()
-    if cap is not None:
-        cap.release()
-    root.destroy()
-
-# Create the main GUI window
-root = tk.Tk()
-root.title("My Recycling Identifier")
-root.geometry("1280x800")  # Set window size
-
-# Modern color scheme
-bg_color = "#2E3440"  # Dark background
-fg_color = "#D8DEE9"  # Light text
-button_color = "#5E81AC"  # Blue buttons
-text_color = "#333333"  # White text
-
-# Apply custom styling
-style = ttk.Style()
-style.theme_use("clam")  # Use a modern theme
-style.configure("TFrame", background=bg_color)
-style.configure("TLabel", background=bg_color, foreground=fg_color, font=("Helvetica", 12))
-style.configure("TButton", background=button_color, foreground=text_color, font=("Helvetica", 12), padding=10)
-style.configure("TText", background=bg_color, foreground=fg_color, font=("Helvetica", 12))
-
-# Create a frame for the video feed
-video_frame = ttk.Frame(root)
-video_frame.pack(pady=10, fill=tk.BOTH, expand=True)
-
-# Label to display the video feed
-video_label = ttk.Label(video_frame)
-video_label.pack(fill=tk.BOTH, expand=True)
-
-# Create a frame for buttons
-button_frame = ttk.Frame(root)
-button_frame.pack(pady=10, fill=tk.X)
-
-# Start Camera Button
-start_button = ttk.Button(button_frame, text="Start Camera", command=lambda: threading.Thread(target=start_camera).start())
-start_button.grid(row=0, column=0, padx=5)
-
-# Stop Camera Button
-stop_button = ttk.Button(button_frame, text="Stop Camera", command=stop_camera)
-stop_button.grid(row=0, column=1, padx=5)
-
-# Upload Image Button
-upload_button = ttk.Button(button_frame, text="Upload Image", command=upload_image)
-upload_button.grid(row=0, column=2, padx=5)
-
-# Save Image Button
-save_button = ttk.Button(button_frame, text="Save Image", command=save_image)
-save_button.grid(row=0, column=3, padx=5)
-
-# Exit Button
-exit_button = ttk.Button(button_frame, text="Exit", command=exit_app)
-exit_button.grid(row=0, column=4, padx=5)
-
-# Create a frame for recycling suggestions
-suggestions_frame = ttk.Frame(root)
-suggestions_frame.pack(pady=10, fill=tk.BOTH, expand=True)
-
-# Label for suggestions
-suggestions_label = ttk.Label(suggestions_frame, text="Recycling Suggestions:")
-suggestions_label.pack()
-
-# Text box to display recycling suggestions
-suggestions_box = tk.Text(suggestions_frame, height=5, width=80, state=tk.DISABLED, bg=bg_color, fg=fg_color, font=("Helvetica", 12))
-suggestions_box.pack(fill=tk.BOTH, expand=True)
-
-# Run the GUI
-root.mainloop()
-
-# Clean up
-if cap is not None:
-    cap.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    app = RecycleAI()
+    app.run()
