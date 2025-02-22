@@ -95,7 +95,7 @@ class RecycleAI:
         self.canvas.create_text(
             69.0, 25.0,
             anchor="nw",
-            text="RECYCLE AI",
+            text="EcoMind AI",
             fill="#FFFFFF",
             font=("Montserrat Bold", 32 * -1)
         )
