@@ -55,7 +55,7 @@ current_frame = None
 class RecycleAI:
     def __init__(self):
         self.window = Tk()
-        self.window.title("Recycle AI")
+        self.window.title("EcoMind AI")
         self.window.geometry("1280x720")
         self.window.configure(bg="#FFFFFF")
         self.window.resizable(False, False)
