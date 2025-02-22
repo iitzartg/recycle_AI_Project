@@ -10,7 +10,7 @@ import threading
 
 # Path configurations
 OUTPUT_PATH = Path(__file__).parent
-ASSETS_PATH = OUTPUT_PATH / Path(r"E:\download\Compressed\Tkinter-Designer-master\Tkinter-Designer-master\build\assets\frame0")
+ASSETS_PATH = OUTPUT_PATH / Path(r"../my_modelV5n/build/assets/frame0")
 
 def relative_to_assets(path: str) -> Path:
     return ASSETS_PATH / Path(path)
@@ -112,17 +112,17 @@ class RecycleAI:
         self.buttons = []
         button_commands = [
             self.start_camera_thread,  # Button 1: Start Camera
-            self.exit_app,          # Button 5: Exit
             self.stop_camera,          # Button 2: Stop Camera
             self.upload_image,         # Button 3: Upload Image
-            self.save_image         # Button 4: Save Image
+            self.save_image,         # Button 4: Save Image
+            self.exit_app        # Button 5: Exit
         ]
         button_positions = [
             (94.0, 617.0),    # Button 1 position
-            (962.0, 617.0),    # Button 5 position
             (311.0, 617.0),   # Button 2 position
             (528.0, 617.0),   # Button 3 position
-            (745.0, 618.0)   # Button 4 position
+            (745.0, 618.0),   # Button 4 position
+            (962.0, 617.0)    # Button 5 position
         ]
 
         for i, (img, cmd, pos) in enumerate(zip(button_images, button_commands, button_positions)):
